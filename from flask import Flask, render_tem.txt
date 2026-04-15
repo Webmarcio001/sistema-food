@@ -1,0 +1,180 @@
+from flask import Flask, render_template, request, redirect, session
+import sqlite3, datetime
+
+app = Flask(__name__)
+app.secret_key = "123"
+
+def db():
+    return sqlite3.connect("banco.db")
+
+def criar():
+    conn = db()
+    c = conn.cursor()
+
+    # PRODUTOS
+    c.execute("""CREATE TABLE IF NOT EXISTS produtos(
+        id INTEGER PRIMARY KEY,
+        nome TEXT,
+        categoria TEXT,
+        codigo TEXT,
+        preco REAL,
+        estoque INTEGER
+    )""")
+
+    # VENDAS
+    c.execute("""CREATE TABLE IF NOT EXISTS vendas(
+        id INTEGER PRIMARY KEY,
+        produto TEXT,
+        valor REAL,
+        data TEXT
+    )""")
+
+    # AGENDA
+    c.execute("""CREATE TABLE IF NOT EXISTS agenda(
+        id INTEGER PRIMARY KEY,
+        cliente TEXT,
+        categoria TEXT,
+        data TEXT,
+        hora TEXT,
+        pessoa TEXT
+    )""")
+
+    conn.commit()
+    conn.close()
+
+# LOGIN
+@app.route("/", methods=["GET","POST"])
+def login():
+    if request.method == "POST":
+        if request.form["user"] == "admin" and request.form["pass"] == "123":
+            session["logado"] = True
+            return redirect("/home")
+    return render_template("login.html")
+
+# HOME
+@app.route("/home")
+def home():
+    return render_template("home.html")
+
+# PRODUTOS
+@app.route("/produtos", methods=["GET","POST"])
+def produtos():
+    conn = db()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        c.execute("INSERT INTO produtos(nome,categoria,codigo,preco,estoque) VALUES (?,?,?,?,?)",
+        (request.form["nome"], request.form["categoria"], request.form["codigo"], request.form["preco"], request.form["estoque"]))
+        conn.commit()
+
+    c.execute("SELECT * FROM produtos")
+    dados = c.fetchall()
+    conn.close()
+
+    return render_template("produtos.html", produtos=dados)
+
+# PDV
+@app.route("/pdv", methods=["GET","POST"])
+def pdv():
+    conn = db()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        nome = request.form["produto"]
+        valor = float(request.form["valor"])
+
+        c.execute("INSERT INTO vendas(produto,valor,data) VALUES (?,?,?)",
+        (nome, valor, str(datetime.date.today())))
+
+        c.execute("UPDATE produtos SET estoque = estoque - 1 WHERE nome=?", (nome,))
+        conn.commit()
+
+    c.execute("SELECT * FROM produtos")
+    produtos = c.fetchall()
+    conn.close()
+
+    return render_template("pdv.html", produtos=produtos)
+
+# AGENDA
+@app.route("/agenda", methods=["GET","POST"])
+def agenda():
+    conn = db()
+    c = conn.cursor()
+
+    if request.method == "POST":
+        c.execute("INSERT INTO agenda(cliente,categoria,data,hora,pessoa) VALUES (?,?,?,?,?)",
+        (request.form["cliente"], request.form["categoria"], request.form["data"], request.form["hora"], request.form["pessoa"]))
+        conn.commit()
+
+    c.execute("SELECT * FROM agenda")
+    dados = c.fetchall()
+    conn.close()
+
+    return render_template("agenda.html", agenda=dados)
+
+# LISTAR CLIENTES POR DIA
+@app.route("/clientes_dia")
+def clientes_dia():
+    data = request.args.get("data")
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM agenda WHERE data=?", (data,))
+    dados = c.fetchall()
+    conn.close()
+    return str(dados)
+
+# LISTAR HORÁRIOS POR PESSOA
+@app.route("/horarios")
+def horarios():
+    pessoa = request.args.get("pessoa")
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT hora,data FROM agenda WHERE pessoa=?", (pessoa,))
+    dados = c.fetchall()
+    conn.close()
+    return str(dados)
+
+# CANCELAR
+@app.route("/cancelar/<int:id>")
+def cancelar(id):
+    conn = db()
+    c = conn.cursor()
+    c.execute("DELETE FROM agenda WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+    return redirect("/agenda")
+
+# LIMPAR AGENDA
+@app.route("/limpar_agenda")
+def limpar_agenda():
+    conn = db()
+    c = conn.cursor()
+    c.execute("DELETE FROM agenda")
+    conn.commit()
+    conn.close()
+    return redirect("/agenda")
+
+# FINANCEIRO
+@app.route("/financeiro")
+def financeiro():
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT SUM(valor) FROM vendas")
+    total = c.fetchone()[0] or 0
+    conn.close()
+    return f"Total: R$ {total}"
+
+# MAPA DE HORÁRIOS (simples)
+@app.route("/mapa")
+def mapa():
+    conn = db()
+    c = conn.cursor()
+    c.execute("SELECT data,hora,pessoa FROM agenda")
+    dados = c.fetchall()
+    conn.close()
+    return str(dados)
+
+criar()
+
+if __name__ == "__main__":
+    app.run(debug=True)
