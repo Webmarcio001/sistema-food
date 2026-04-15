@@ -1,1 +1,12 @@
-templates
+<h2>PDV</h2>
+
+<form method="POST">
+<select name="produto">
+{% for p in produtos %}
+<option>{{p[1]}}</option>
+{% endfor %}
+</select>
+
+<input name="valor" placeholder="Valor">
+<button>Vender</button>
+</form>
